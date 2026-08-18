@@ -22,6 +22,22 @@ class AuthCaptureVpnService : VpnService() {
     private val running = AtomicBoolean(false)
     private val TAG = "QuestAuthVPN"
 
+    // Only these packages go through the VPN → games stay untouched
+    private val ALLOWED_PACKAGES = listOf(
+        "com.oculus.vrshell",
+        "com.oculus.systemux",
+        "com.oculus.horizon",
+        "com.oculus.explorer",
+        "com.meta.horizon",
+        "com.facebook.katana",
+        "com.facebook.orca",
+        "com.instagram.android",
+        "com.oculus.assistant",
+        "com.oculus.updater",
+        "com.oculus.companion",
+        "com.oculus.store"
+    )
+
     private val AUTH_KEYWORDS = listOf(
         "authorization", "bearer", "access_token", "id_token", "refresh_token",
         "oauth", "login", "signin", "authenticate", "session", "cookie",
@@ -43,13 +59,28 @@ class AuthCaptureVpnService : VpnService() {
         val builder = Builder()
             .setSession("QuestAuthScanner")
             .addAddress("10.0.0.2", 32)
-            .addRoute("0.0.0.0", 0)
             .addDnsServer("8.8.8.8")
             .setMtu(1500)
             .setBlocking(true)
 
+        // CRITICAL: only route the Meta/Oculus packages
+        // everything else (games) bypasses the VPN completely
+        var added = 0
+        for (pkg in ALLOWED_PACKAGES) {
+            try {
+                builder.addAllowedApplication(pkg)
+                added++
+            } catch (_: Exception) {
+                // package not installed – ignore
+            }
+        }
+
+        if (added == 0) {
+            Log.w(TAG, "No Meta packages found – VPN idle")
+        }
+
         vpnInterface = builder.establish()
-        Log.i(TAG, "VPN interface up – no root")
+        Log.i(TAG, "VPN up – only Meta packages routed ($added apps)")
     }
 
     private fun startCaptureLoop() {
@@ -108,7 +139,7 @@ class AuthCaptureVpnService : VpnService() {
         )
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Quest Auth Scanner")
-            .setContentText("Background capture active – no root")
+            .setContentText("Meta-only capture – games safe")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pending)
             .setOngoing(true)
